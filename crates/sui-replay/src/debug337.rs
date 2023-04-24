@@ -18,8 +18,12 @@ impl DebugOpener {
             "Opening authority perpetual object table at path: {:?}",
             path
         );
-        let pep_tables =
-            AuthorityPerpetualTables::get_read_only_handle(path.clone(), None, None, MetricConf::default());
+        let pep_tables = AuthorityPerpetualTables::get_read_only_handle(
+            path.clone(),
+            None,
+            None,
+            MetricConf::default(),
+        );
         pep_tables.objects.try_catch_up_with_primary().unwrap();
         Self {
             path,

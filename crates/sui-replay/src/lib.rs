@@ -10,8 +10,9 @@ use sui_config::node::ExpensiveSafetyCheckConfig;
 use sui_types::digests::TransactionDigest;
 use tracing::info;
 
-mod debug337;
-mod replay;
+pub mod checker;
+pub mod debug337;
+pub mod replay;
 
 #[derive(Parser, Clone)]
 #[clap(rename_all = "kebab-case")]
