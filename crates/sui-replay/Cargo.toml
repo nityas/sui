@@ -25,6 +25,9 @@ move-bytecode-utils.workspace = true
 move-core-types.workspace = true
 move-package.workspace = true
 
+typed-store.workspace = true
+
+
 sui-adapter = { path = "../sui-adapter" }
 sui-config = { path = "../sui-config" }
 sui-core = { path = "../sui-core" }

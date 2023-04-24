@@ -4,11 +4,13 @@
 use clap::Parser;
 
 use crate::replay::LocalExec;
+use std::path::PathBuf;
 use std::str::FromStr;
 use sui_config::node::ExpensiveSafetyCheckConfig;
 use sui_types::digests::TransactionDigest;
 use tracing::info;
 
+mod debug337;
 mod replay;
 
 #[derive(Parser, Clone)]
@@ -34,6 +36,9 @@ pub enum ReplayToolCommand {
 
     #[clap(name = "report")]
     Report,
+
+    #[clap(name = "debug")]
+    Debug { path: String },
 }
 
 pub async fn execute_replay_command(
@@ -116,6 +121,17 @@ pub async fn execute_replay_command(
                 for (package_id, seq_num) in x.1 {
                     println!("Package: {} Seq: {}", package_id, seq_num);
                 }
+            }
+        }
+        ReplayToolCommand::Debug { path } => {
+            let op = debug337::DebugOpener::new(PathBuf::from(path));
+            let mut count = 0;
+            let mut it = op.follow_object_table();
+
+            while count < 10 {
+                println!("{} -------------------------------\n\n\n", count);
+                println!("Object: {:?}", it.next());
+                count += 1;
             }
         }
     }

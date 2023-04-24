@@ -9735,6 +9735,7 @@ dependencies = [
  "sui-types",
  "thiserror",
  "tracing",
+ "typed-store",
  "workspace-hack",
 ]
 
