@@ -8,7 +8,8 @@ use sui_types::base_types::ObjectID;
 
 const PATH: &str = "/opt/sui/db/authorities_db/full_node_db/live/store/perpetual";
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let file = File::open("file.txt").unwrap();
     let reader = BufReader::new(file);
 
