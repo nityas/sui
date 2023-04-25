@@ -31,6 +31,42 @@ impl DebugOpener {
         }
     }
 
+    pub fn follow_object_table_by_file(
+        &self,
+        obj_ids: Vec<ObjectID>,
+    ) -> impl Iterator<Item = (ObjectID, Object)> + '_ {
+        println!("Using objects IDs. Len: {}", obj_ids.len());
+        println!(
+            "Following authority perpetual object table at path: {:?}",
+            self.path
+        );
+
+        obj_ids.into_iter().filter_map(|object_id| {
+            let g = self
+                .db
+                .iter()
+                .skip_prior_to(&ObjectKey::max_for_id(&object_id))
+                .unwrap()
+                .next()
+                .unwrap();
+            if let StoreObjectWrapper::V1(StoreObjectV1::Value(o)) = g.1 {
+                if let StoreData::Package(p) = o.data {
+                    return Some((
+                        p.id(),
+                        Object {
+                            data: Data::Package(p),
+                            owner: o.owner,
+                            previous_transaction: o.previous_transaction,
+                            storage_rebate: o.storage_rebate,
+                        },
+                    ));
+                }
+            }
+            println!("Package expected but not found: {:?}", object_id);
+            None
+        })
+    }
+
     pub fn follow_object_table(&self) -> impl Iterator<Item = (ObjectID, Object)> + '_ {
         println!(
             "Following authority perpetual object table at path: {:?}",
