@@ -15,7 +15,10 @@ use sui_cluster_test::{
     config::{ClusterTestOpt, Env},
     faucet::{FaucetClient, FaucetClientFactory},
 };
+use sui_config::genesis_config::GenesisConfig;
+use sui_config::{sui_config_dir, SUI_KEYSTORE_FILENAME};
 use sui_faucet::{FaucetRequest, FixedAmountRequest};
+use sui_keys::keystore::{AccountKeystore, FileBasedKeystore};
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -23,10 +26,6 @@ use tower_http::cors::{Any, CorsLayer};
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    // TODO: Support a configuration directory for persisted networks:
-    // /// Config directory that will be used to store network configuration
-    // #[clap(short, long, parse(from_os_str), value_hint = ValueHint::DirPath)]
-    // config: Option<std::path::PathBuf>,
     /// Port to start the Fullnode RPC server on
     #[clap(long, default_value = "9000")]
     fullnode_rpc_port: u16,
@@ -59,6 +58,10 @@ struct Args {
     /// TODO(gegao): remove this after indexer migration is complete.
     #[clap(long)]
     pub use_indexer_experimental_methods: bool,
+
+    /// If we run the local config with a persisted state.
+    #[clap(long, takes_value = false)]
+    pub with_persisted: bool,
 }
 
 #[tokio::main]
@@ -77,19 +80,38 @@ async fn main() -> Result<()> {
         faucet_port,
         with_indexer,
         use_indexer_experimental_methods,
+        with_persisted,
     } = args;
 
-    let cluster = LocalNewCluster::start(&ClusterTestOpt {
-        env: Env::NewLocal,
-        fullnode_address: Some(format!("127.0.0.1:{}", fullnode_rpc_port)),
-        indexer_address: with_indexer.then_some(format!("127.0.0.1:{}", indexer_rpc_port)),
-        pg_address: with_indexer.then_some(format!(
-            "postgres://postgres@{pg_host}:{pg_port}/sui_indexer"
-        )),
-        faucet_address: None,
-        epoch_duration_ms: Some(epoch_duration_ms),
-        use_indexer_experimental_methods,
-    })
+    // Notes: In order to save all the information from a previous genesis, we need to pass down the
+    // genesis files of the previous sui-test-validators. In this implementation we make our genesis
+    // compatitible with ./sui genesis so that it can be used for both sui-test-validator and sui-start.
+    // If we never ran sui genesis this will not work.
+    let genesis_config_option = if with_persisted {
+        let sui_config_dir = sui_config_dir()?;
+        let keystore_path = sui_config_dir.join(SUI_KEYSTORE_FILENAME);
+        let existing_keys = FileBasedKeystore::new(&keystore_path)?.addresses();
+        Some(GenesisConfig::for_local_testing_with_addresses(
+            existing_keys,
+        ))
+    } else {
+        None
+    };
+
+    let cluster = LocalNewCluster::start(
+        &ClusterTestOpt {
+            env: Env::NewLocal,
+            fullnode_address: Some(format!("127.0.0.1:{}", fullnode_rpc_port)),
+            indexer_address: with_indexer.then_some(format!("127.0.0.1:{}", indexer_rpc_port)),
+            pg_address: with_indexer.then_some(format!(
+                "postgres://postgres@{pg_host}:{pg_port}/sui_indexer"
+            )),
+            faucet_address: None,
+            epoch_duration_ms: Some(epoch_duration_ms),
+            use_indexer_experimental_methods,
+        },
+        genesis_config_option,
+    )
     .await?;
 
     println!("Fullnode RPC URL: {}", cluster.fullnode_url());

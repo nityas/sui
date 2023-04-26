@@ -24,7 +24,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = wallet.get_client().await?;
 
     // Pick a gas coin here that isn't in use by the faucet otherwise there will be some contention.
-    let gas_coin = "0xfde0a5e733e446db0c5d2294673ee5f5a17c5aeacb7565ce82cbd5a145e15d44";
+    let gas_coin = "0xff50688d19de2096e17e2ba06e5cdcd06bc45ab779fcf34c55fc8139bff73301";
     let small_coins = wallet
         .gas_objects(active_address)
         .await
