@@ -103,6 +103,8 @@ pub struct SuiTestAdapter<'a> {
     vm: Arc<MoveVM>,
     pub(crate) storage: Arc<InMemoryStorage>,
     pub(crate) compiled_state: CompiledState<'a>,
+    /// Maps an upgraded package name to the original package name.
+    package_upgrade_mapping: BTreeMap<Symbol, Symbol>,
     accounts: BTreeMap<String, TestAccount>,
     default_account: TestAccount,
     default_syntax: SyntaxChoice,
@@ -319,6 +321,7 @@ impl<'a> MoveTestAdapter<'a> for SuiTestAdapter<'a> {
                     NumberFormat::Hex,
                 )),
             ),
+            package_upgrade_mapping: BTreeMap::new(),
             accounts,
             default_account,
             default_syntax,
@@ -696,6 +699,28 @@ impl<'a> MoveTestAdapter<'a> for SuiTestAdapter<'a> {
                     )
                 })?;
 
+                println!("upgrade map {:#?}", self.package_upgrade_mapping);
+
+                let original_named_address_mapping =
+                    self.compiled_state.named_address_mapping.clone();
+                let named_address_mapping = &mut self.compiled_state.named_address_mapping;
+                for dep in dependencies.iter() {
+                    let dep = &Symbol::from(dep.as_str());
+                    let Some(orig_package) = self.package_upgrade_mapping.get(dep) else {
+			continue
+		    };
+                    let Some(orig_address) =
+			named_address_mapping
+			.get(&orig_package.to_string()) else {
+			    continue
+			};
+                    named_address_mapping.insert(dep.to_string(), *orig_address);
+                    named_address_mapping.insert(
+                        orig_package.to_string(),
+                        NumericalAddress::new(AccountAddress::ZERO.into_bytes(), NumberFormat::Hex),
+                    );
+                }
+
                 let state = self.compiled_state();
                 let (mut modules, warnings_opt) = match syntax {
                     SyntaxChoice::Source => {
@@ -724,6 +749,14 @@ impl<'a> MoveTestAdapter<'a> for SuiTestAdapter<'a> {
                         (vec![(None, module)], None)
                     }
                 };
+
+                state.named_address_mapping = original_named_address_mapping;
+
+                // Record the original package of this upgraded package.
+                let upgraded_name = modules.first().unwrap().0.unwrap();
+                self.package_upgrade_mapping
+                    .insert(upgraded_name, Symbol::from(package.clone()));
+
                 let output = self.upgrade_package(
                     package,
                     &modules,
