@@ -45,8 +45,10 @@ const textStyles = cva(['break-words'], {
             'hero-dark': 'text-hero-dark',
             'success-dark': 'text-success-dark',
             issue: 'text-issue',
+            'issue-dark': 'text-issue-dark',
         },
         uppercase: { true: 'uppercase' },
+        capitalize: { true: 'capitalize' },
         italic: {
             true: 'italic',
             false: '',

@@ -52,6 +52,11 @@ export const Secondary: StoryObj<ButtonProps> = {
     args: { variant: 'secondary' },
 };
 
+export const Tertiary: StoryObj<ButtonProps> = {
+    ...Primary,
+    args: { variant: 'tertiary' },
+};
+
 export const Outline: StoryObj<ButtonProps> = {
     ...Primary,
     args: { variant: 'outline' },
