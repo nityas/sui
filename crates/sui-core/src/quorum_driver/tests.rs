@@ -10,11 +10,13 @@ use mysten_common::sync::notify_read::{NotifyRead, Registration};
 use std::sync::Arc;
 use std::time::Duration;
 use sui_types::base_types::SuiAddress;
+use sui_types::base_types::TransactionDigest;
 use sui_types::crypto::{deterministic_random_account_key, get_key_pair, AccountKeyPair};
 use sui_types::messages::{TransactionEffectsAPI, VerifiedTransaction};
 use sui_types::object::{generate_test_gas_objects, Object};
-use sui_types::quorum_driver_types::{QuorumDriverError, QuorumDriverResult};
-use sui_types::{base_types::TransactionDigest, messages::QuorumDriverResponse};
+use sui_types::quorum_driver_types::{
+    QuorumDriverError, QuorumDriverResponseWithObjects, QuorumDriverResultWithObjects,
+};
 
 async fn setup() -> (
     AuthorityAggregator<LocalAuthorityClient>,
@@ -71,7 +73,7 @@ async fn test_quorum_driver_submit_transaction() {
     // Test submit_transaction
     let qd_clone = quorum_driver_handler.clone();
     let handle = tokio::task::spawn(async move {
-        let (tx, QuorumDriverResponse { effects_cert, .. }) = qd_clone
+        let (tx, QuorumDriverResponseWithObjects { effects_cert, .. }) = qd_clone
             .subscribe_to_effects()
             .recv()
             .await
@@ -101,7 +103,7 @@ async fn test_quorum_driver_submit_transaction_no_ticket() {
     );
     let qd_clone = quorum_driver_handler.clone();
     let handle = tokio::task::spawn(async move {
-        let (tx, QuorumDriverResponse { effects_cert, .. }) = qd_clone
+        let (tx, QuorumDriverResponseWithObjects { effects_cert, .. }) = qd_clone
             .subscribe_to_effects()
             .recv()
             .await
@@ -118,10 +120,10 @@ async fn test_quorum_driver_submit_transaction_no_ticket() {
 }
 
 async fn verify_ticket_response<'a>(
-    ticket: Registration<'a, TransactionDigest, QuorumDriverResult>,
+    ticket: Registration<'a, TransactionDigest, QuorumDriverResultWithObjects>,
     tx_digest: &TransactionDigest,
 ) {
-    let QuorumDriverResponse { effects_cert, .. } = ticket.await.unwrap();
+    let QuorumDriverResponseWithObjects { effects_cert, .. } = ticket.await.unwrap();
     assert_eq!(effects_cert.data().transaction_digest(), tx_digest);
 }
 
@@ -143,7 +145,7 @@ async fn test_quorum_driver_with_given_notify_read() {
 
     let qd_clone = quorum_driver_handler.clone();
     let handle = tokio::task::spawn(async move {
-        let (tx, QuorumDriverResponse { effects_cert, .. }) = qd_clone
+        let (tx, QuorumDriverResponseWithObjects { effects_cert, .. }) = qd_clone
             .subscribe_to_effects()
             .recv()
             .await
@@ -326,7 +328,7 @@ async fn test_quorum_driver_object_locked() -> Result<(), anyhow::Error> {
         .unwrap();
 
     // Aggregator gets three good responses and execution succeeds.
-    let QuorumDriverResponse { effects_cert, .. } = res;
+    let QuorumDriverResponseWithObjects { effects_cert, .. } = res;
     assert_eq!(*effects_cert.transaction_digest(), tx2_digest);
 
     println!("Case 3 - object is locked by 2 txes with weight 2 and 1 respectivefully. Then try to execute the third txn");
@@ -403,7 +405,7 @@ async fn test_quorum_driver_object_locked() -> Result<(), anyhow::Error> {
         .await
         .unwrap();
 
-    let QuorumDriverResponse { effects_cert, .. } = res;
+    let QuorumDriverResponseWithObjects { effects_cert, .. } = res;
     assert_eq!(*effects_cert.transaction_digest(), tx_digest);
 
     println!("Case 6 - three validators lock the object, by different txes");

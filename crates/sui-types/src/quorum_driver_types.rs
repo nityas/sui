@@ -8,15 +8,31 @@ use crate::base_types::{AuthorityName, ObjectRef, TransactionDigest};
 use crate::committee::StakeUnit;
 use crate::crypto::ConciseAuthorityPublicKeyBytes;
 use crate::error::SuiError;
-use crate::messages::{QuorumDriverResponse, VerifiedTransaction};
+use crate::messages::{
+    QuorumDriverResponse, TransactionEvents, VerifiedCertifiedTransactionEffects,
+    VerifiedTransaction,
+};
+use crate::object::Object;
 use serde::{Deserialize, Serialize};
 use strum::AsRefStr;
 use thiserror::Error;
 
-pub type QuorumDriverResult = Result<QuorumDriverResponse, QuorumDriverError>;
+// QuorumDrvierResponse with verified input Objects passed back from
+// Validator responses for fast execution.
+#[derive(Debug, Clone)]
+pub struct QuorumDriverResponseWithObjects {
+    pub effects_cert: VerifiedCertifiedTransactionEffects,
+    pub events: TransactionEvents,
+    pub objects: Vec<Object>,
+}
 
-pub type QuorumDriverEffectsQueueResult =
-    Result<(VerifiedTransaction, QuorumDriverResponse), (TransactionDigest, QuorumDriverError)>;
+pub type QuorumDriverResult = Result<QuorumDriverResponse, QuorumDriverError>;
+pub type QuorumDriverResultWithObjects = Result<QuorumDriverResponseWithObjects, QuorumDriverError>;
+
+pub type QuorumDriverEffectsQueueResult = Result<
+    (VerifiedTransaction, QuorumDriverResponseWithObjects),
+    (TransactionDigest, QuorumDriverError),
+>;
 
 /// Client facing errors regarding transaction submission via Quorum Driver.
 /// Every invariant needs detailed documents to instruct client handling.

@@ -28,11 +28,13 @@ use sui_types::base_types::TransactionDigest;
 use sui_types::error::{SuiError, SuiResult};
 use sui_types::messages::{
     ExecuteTransactionRequest, ExecuteTransactionRequestType, ExecuteTransactionResponse,
-    FinalizedEffects, QuorumDriverResponse, TransactionEffectsAPI,
-    VerifiedCertifiedTransactionEffects, VerifiedExecutableTransaction,
+    FinalizedEffects, TransactionEffectsAPI, VerifiedCertifiedTransactionEffects,
+    VerifiedExecutableTransaction,
 };
+use sui_types::object::Object;
 use sui_types::quorum_driver_types::{
-    QuorumDriverEffectsQueueResult, QuorumDriverError, QuorumDriverResult,
+    QuorumDriverEffectsQueueResult, QuorumDriverError, QuorumDriverResponseWithObjects,
+    QuorumDriverResultWithObjects,
 };
 use sui_types::sui_system_state::SuiSystemState;
 use tokio::sync::broadcast::error::RecvError;
@@ -54,7 +56,7 @@ pub struct TransactiondOrchestrator<A> {
     validator_state: Arc<AuthorityState>,
     _local_executor_handle: JoinHandle<()>,
     pending_tx_log: Arc<WritePathPendingTransactionLog>,
-    notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResult>>,
+    notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResultWithObjects>>,
     metrics: Arc<TransactionOrchestratorMetrics>,
 }
 
@@ -204,7 +206,11 @@ where
             Err(err) => Err(err),
             Ok(response) => {
                 good_response_metrics.inc();
-                let QuorumDriverResponse { effects_cert, .. } = response;
+                let QuorumDriverResponseWithObjects {
+                    effects_cert,
+                    objects,
+                    ..
+                } = response;
                 if !wait_for_local_execution {
                     return Ok(ExecuteTransactionResponse::EffectsCert(Box::new((
                         FinalizedEffects::new_from_effects_cert(effects_cert.into()),
@@ -221,6 +227,7 @@ where
                     &self.validator_state,
                     &executable_tx,
                     &effects_cert,
+                    &objects,
                     &self.metrics,
                 )
                 .await
@@ -244,7 +251,7 @@ where
     async fn submit(
         &self,
         transaction: VerifiedTransaction,
-    ) -> SuiResult<Registration<TransactionDigest, QuorumDriverResult>> {
+    ) -> SuiResult<Registration<TransactionDigest, QuorumDriverResultWithObjects>> {
         let tx_digest = *transaction.digest();
         let ticket = self.notifier.register_one(&tx_digest);
         if self
@@ -265,6 +272,7 @@ where
         validator_state: &Arc<AuthorityState>,
         transaction: &VerifiedExecutableTransaction,
         effects_cert: &VerifiedCertifiedTransactionEffects,
+        objects: &Vec<Object>,
         metrics: &TransactionOrchestratorMetrics,
     ) -> SuiResult {
         let epoch_store = validator_state.load_epoch_store_one_call_per_task();
@@ -297,6 +305,7 @@ where
             validator_state.fullnode_execute_certificate_with_effects(
                 transaction,
                 effects_cert,
+                objects,
                 &epoch_store,
             ),
         )
@@ -337,7 +346,14 @@ where
     ) {
         loop {
             match effects_receiver.recv().await {
-                Ok(Ok((transaction, QuorumDriverResponse { effects_cert, .. }))) => {
+                Ok(Ok((
+                    transaction,
+                    QuorumDriverResponseWithObjects {
+                        effects_cert,
+                        objects,
+                        ..
+                    },
+                ))) => {
                     let executable_tx = VerifiedExecutableTransaction::new_from_quorum_execution(
                         transaction,
                         effects_cert.executed_epoch(),
@@ -353,6 +369,7 @@ where
                         &validator_state,
                         &executable_tx,
                         &effects_cert,
+                        &objects,
                         &metrics,
                     )
                     .await;

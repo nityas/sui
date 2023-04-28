@@ -14,7 +14,8 @@ use std::time::Duration;
 use sui_types::base_types::{AuthorityName, ObjectRef, TransactionDigest};
 use sui_types::committee::{Committee, EpochId, StakeUnit};
 use sui_types::quorum_driver_types::{
-    QuorumDriverEffectsQueueResult, QuorumDriverError, QuorumDriverResult,
+    QuorumDriverEffectsQueueResult, QuorumDriverError, QuorumDriverResponseWithObjects,
+    QuorumDriverResultWithObjects,
 };
 use tap::TapFallible;
 use tokio::time::{sleep_until, Instant};
@@ -33,9 +34,7 @@ use mysten_common::sync::notify_read::{NotifyRead, Registration};
 use mysten_metrics::{spawn_monitored_task, GaugeGuard};
 use std::fmt::Write;
 use sui_types::error::{SuiError, SuiResult};
-use sui_types::messages::{
-    PlainTransactionInfoResponse, QuorumDriverResponse, VerifiedCertificate, VerifiedTransaction,
-};
+use sui_types::messages::{PlainTransactionInfoResponse, VerifiedCertificate, VerifiedTransaction};
 
 use self::reconfig_observer::ReconfigObserver;
 
@@ -69,7 +68,7 @@ pub struct QuorumDriver<A> {
     validators: ArcSwap<AuthorityAggregator<A>>,
     task_sender: Sender<QuorumDriverTask>,
     effects_subscribe_sender: tokio::sync::broadcast::Sender<QuorumDriverEffectsQueueResult>,
-    notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResult>>,
+    notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResultWithObjects>>,
     metrics: Arc<QuorumDriverMetrics>,
     max_retry_times: u8,
 }
@@ -79,7 +78,7 @@ impl<A> QuorumDriver<A> {
         validators: ArcSwap<AuthorityAggregator<A>>,
         task_sender: Sender<QuorumDriverTask>,
         effects_subscribe_sender: tokio::sync::broadcast::Sender<QuorumDriverEffectsQueueResult>,
-        notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResult>>,
+        notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResultWithObjects>>,
         metrics: Arc<QuorumDriverMetrics>,
         max_retry_times: u8,
     ) -> Self {
@@ -167,7 +166,7 @@ impl<A> QuorumDriver<A> {
     pub fn notify(
         &self,
         transaction: &VerifiedTransaction,
-        response: &QuorumDriverResult,
+        response: &QuorumDriverResultWithObjects,
         total_attempts: u8,
     ) {
         let tx_digest = transaction.digest();
@@ -204,7 +203,7 @@ where
     pub async fn submit_transaction(
         &self,
         transaction: VerifiedTransaction,
-    ) -> SuiResult<Registration<TransactionDigest, QuorumDriverResult>> {
+    ) -> SuiResult<Registration<TransactionDigest, QuorumDriverResultWithObjects>> {
         let tx_digest = transaction.digest();
         debug!(?tx_digest, "Received transaction execution request.");
         self.metrics.total_requests.inc();
@@ -401,11 +400,11 @@ where
     pub(crate) async fn process_certificate(
         &self,
         certificate: VerifiedCertificate,
-    ) -> Result<QuorumDriverResponse, Option<QuorumDriverError>> {
+    ) -> Result<QuorumDriverResponseWithObjects, Option<QuorumDriverError>> {
         let auth_agg = self.validators.load();
         let _cert_guard = GaugeGuard::acquire(&auth_agg.metrics.inflight_certificates);
         let tx_digest = *certificate.digest();
-        let (effects, events) = auth_agg
+        let (effects, events, objects) = auth_agg
             .process_certificate(certificate.clone().into_inner())
             .instrument(tracing::debug_span!("aggregator_process_cert", ?tx_digest))
             .await
@@ -430,9 +429,10 @@ where
                     None
                 }
             })?;
-        let response = QuorumDriverResponse {
+        let response = QuorumDriverResponseWithObjects {
             effects_cert: effects,
             events,
+            objects,
         };
 
         Ok(response)
@@ -541,7 +541,7 @@ where
 {
     pub(crate) fn new(
         validators: Arc<AuthorityAggregator<A>>,
-        notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResult>>,
+        notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResultWithObjects>>,
         reconfig_observer: Arc<dyn ReconfigObserver<A> + Sync + Send>,
         metrics: Arc<QuorumDriverMetrics>,
         max_retry_times: u8,
@@ -599,7 +599,7 @@ where
     pub async fn submit_transaction(
         &self,
         transaction: VerifiedTransaction,
-    ) -> SuiResult<Registration<TransactionDigest, QuorumDriverResult>> {
+    ) -> SuiResult<Registration<TransactionDigest, QuorumDriverResultWithObjects>> {
         self.quorum_driver.submit_transaction(transaction).await
     }
 
@@ -691,9 +691,10 @@ where
                         ?tx_digest,
                         "Transaction processing succeeded with effects directly"
                     );
-                    let response = QuorumDriverResponse {
+                    let response = QuorumDriverResponseWithObjects {
                         effects_cert,
                         events,
+                        objects: vec![],
                     };
                     quorum_driver.notify(&transaction, &Ok(response), old_retry_times + 1);
                     return;
@@ -714,15 +715,9 @@ where
         };
 
         let response = match quorum_driver.process_certificate(tx_cert.clone()).await {
-            Ok(QuorumDriverResponse {
-                effects_cert,
-                events,
-            }) => {
+            Ok(response) => {
                 debug!(?tx_digest, "Certificate processing succeeded");
-                QuorumDriverResponse {
-                    effects_cert,
-                    events,
-                }
+                response
             }
             // Note: non retryable failure when processing a cert
             // should be very rare.
@@ -792,7 +787,7 @@ where
 pub struct QuorumDriverHandlerBuilder<A> {
     validators: Arc<AuthorityAggregator<A>>,
     metrics: Arc<QuorumDriverMetrics>,
-    notifier: Option<Arc<NotifyRead<TransactionDigest, QuorumDriverResult>>>,
+    notifier: Option<Arc<NotifyRead<TransactionDigest, QuorumDriverResultWithObjects>>>,
     reconfig_observer: Option<Arc<dyn ReconfigObserver<A> + Sync + Send>>,
     max_retry_times: u8,
 }
@@ -813,7 +808,7 @@ where
 
     pub(crate) fn with_notifier(
         mut self,
-        notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResult>>,
+        notifier: Arc<NotifyRead<TransactionDigest, QuorumDriverResultWithObjects>>,
     ) -> Self {
         self.notifier = Some(notifier);
         self
@@ -837,7 +832,7 @@ where
         QuorumDriverHandler::new(
             self.validators,
             self.notifier.unwrap_or_else(|| {
-                Arc::new(NotifyRead::<TransactionDigest, QuorumDriverResult>::new())
+                Arc::new(NotifyRead::<TransactionDigest, QuorumDriverResultWithObjects>::new())
             }),
             self.reconfig_observer
                 .expect("Reconfig observer is missing"),

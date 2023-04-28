@@ -28,11 +28,12 @@ use sui_types::event::{Event, EventID};
 use sui_types::message_envelope::Message;
 use sui_types::messages::{
     ExecuteTransactionRequest, ExecuteTransactionRequestType, ExecuteTransactionResponse, GasData,
-    QuorumDriverResponse, TransactionData, TransactionKind, TEST_ONLY_GAS_UNIT_FOR_TRANSFER,
+    TransactionData, TransactionKind, TEST_ONLY_GAS_UNIT_FOR_TRANSFER,
 };
 use sui_types::object::{Object, ObjectRead, Owner, PastObjectRead};
 use sui_types::programmable_transaction_builder::ProgrammableTransactionBuilder;
 use sui_types::query::TransactionFilter;
+use sui_types::quorum_driver_types::QuorumDriverResponseWithObjects;
 use sui_types::utils::to_sender_signed_transaction_with_multi_signers;
 use sui_types::{base_types::ObjectID, messages::TransactionInfoRequest};
 use test_utils::authority::test_and_configure_authority_configs;
@@ -743,9 +744,10 @@ async fn test_full_node_transaction_orchestrator_basic() -> Result<(), anyhow::E
     let ExecuteTransactionResponse::EffectsCert(res) = res;
     let (
         tx,
-        QuorumDriverResponse {
+        QuorumDriverResponseWithObjects {
             effects_cert: certified_txn_effects,
             events: txn_events,
+            ..
         },
     ) = rx.recv().await.unwrap().unwrap();
     let (cte, events, is_executed_locally) = *res;
@@ -771,9 +773,10 @@ async fn test_full_node_transaction_orchestrator_basic() -> Result<(), anyhow::E
     let ExecuteTransactionResponse::EffectsCert(res) = res;
     let (
         tx,
-        QuorumDriverResponse {
+        QuorumDriverResponseWithObjects {
             effects_cert: certified_txn_effects,
             events: txn_events,
+            ..
         },
     ) = rx.recv().await.unwrap().unwrap();
     let (cte, events, is_executed_locally) = *res;

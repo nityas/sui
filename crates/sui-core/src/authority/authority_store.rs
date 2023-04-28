@@ -698,17 +698,17 @@ impl AuthorityStore {
 
     /// Insert a genesis object.
     /// TODO: delete this method entirely (still used by authority_tests.rs)
-    pub(crate) async fn insert_genesis_object(&self, object: Object) -> SuiResult {
+    pub(crate) fn insert_genesis_object(&self, object: Object) -> SuiResult {
         // We only side load objects with a genesis parent transaction.
         debug_assert!(object.previous_transaction == TransactionDigest::genesis());
         let object_ref = object.compute_object_reference();
-        self.insert_object_direct(object_ref, &object).await
+        self.insert_object_direct(object_ref, &object)
     }
 
     /// Insert an object directly into the store, and also update relevant tables
-    /// NOTE: does not handle transaction lock.
+    /// NOTET: does not handle transaction lock.
     /// This is used to insert genesis objects
-    async fn insert_object_direct(&self, object_ref: ObjectRef, object: &Object) -> SuiResult {
+    fn insert_object_direct(&self, object_ref: ObjectRef, object: &Object) -> SuiResult {
         let mut write_batch = self.perpetual_tables.objects.batch();
 
         // Insert object
@@ -730,6 +730,32 @@ impl AuthorityStore {
             // Only initialize lock for address owned objects.
             if !object.is_child_object() {
                 self.initialize_locks_impl(&mut write_batch, &[object_ref], false)?;
+            }
+        }
+
+        write_batch.write()?;
+
+        Ok(())
+    }
+
+    /// Insert objects directly into the store, but do not touch other tables.
+    /// This is used in fullnode to insert objects from validators certificate handling response
+    /// in fast path execution.
+    pub(crate) fn insert_objects_to_object_store(&self, objects: &Vec<Object>) -> SuiResult {
+        let mut write_batch = self.perpetual_tables.objects.batch();
+
+        for obj in objects {
+            let StoreObjectPair(store_object, indirect_object) =
+                get_store_object_pair(obj.clone(), self.indirect_objects_threshold);
+            write_batch.insert_batch(
+                &self.perpetual_tables.objects,
+                std::iter::once((ObjectKey(obj.id(), obj.version()), store_object)),
+            )?;
+            if let Some(indirect_obj) = indirect_object {
+                write_batch.insert_batch(
+                    &self.perpetual_tables.indirect_move_objects,
+                    std::iter::once((indirect_obj.inner().digest(), indirect_obj)),
+                )?;
             }
         }
 
@@ -1822,6 +1848,16 @@ impl From<LockDetails> for LockDetailsWrapper {
 /// A potential input to a transaction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct InputKey(pub ObjectID, pub Option<SequenceNumber>);
+
+impl From<&Object> for InputKey {
+    fn from(obj: &Object) -> Self {
+        if obj.is_package() {
+            InputKey(obj.id(), None)
+        } else {
+            InputKey(obj.id(), Some(obj.version()))
+        }
+    }
+}
 
 /// How a transaction should lock a given input object.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
