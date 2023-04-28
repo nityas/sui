@@ -1,5 +1,17 @@
 # @mysten/sui.js
 
+## 0.33.0
+
+### Minor Changes
+
+- 7915de531: Strip disassembled modules from publish/upgrade transaction inputs.
+- e61ed2bac: Added new TransactionFilter fields
+
+### Patch Changes
+
+- 605eac8c6: Bugfix for makeMoveVec when not providing type arguments.
+- 262e3dfdd: Add support for account switching in Wallet Kit.
+
 ## 0.32.2
 
 ### Patch Changes

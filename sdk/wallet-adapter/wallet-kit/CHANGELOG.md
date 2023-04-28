@@ -1,5 +1,21 @@
 # @mysten/wallet-kit
 
+## 0.4.5
+
+### Patch Changes
+
+- 262e3dfdd: Add support for account switching in Wallet Kit.
+- Updated dependencies [7915de531]
+- Updated dependencies [605eac8c6]
+- Updated dependencies [262e3dfdd]
+- Updated dependencies [e61ed2bac]
+  - @mysten/sui.js@0.33.0
+  - @mysten/wallet-kit-core@0.4.5
+  - @mysten/wallet-adapter-base@0.7.5
+  - @mysten/wallet-adapter-unsafe-burner@0.8.5
+  - @mysten/wallet-adapter-wallet-standard@0.7.5
+  - @mysten/wallet-standard@0.5.5
+
 ## 0.4.4
 
 ### Patch Changes
